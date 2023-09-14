@@ -2,6 +2,7 @@
 
 import { useUserStore } from '@/stores/users';
 import { CurrentUserPayload, UserResponse } from '@/types/api/users';
+import { useRouter } from 'next/navigation';
 import { ChangeEvent, FormEvent, useState } from 'react';
 
 import { putCurrentUser } from '@/api/users';
@@ -11,44 +12,52 @@ interface Props {
 }
 
 const SettingsPageMain = ({ mySettings }: Props) => {
+  const router = useRouter();
   const { logout, updateInfo } = useUserStore();
 
   const [form, setForm] = useState<CurrentUserPayload['user']>({
     ...mySettings,
     password: '',
   });
-  const [errorTypes, setErrorTypes] = useState<string[] | null>(null);
+  const [errorEmptyTypes, setErrorEmptyTypes] = useState<string[] | null>(null);
+  const [errorValidTypes, setErrorValidTypes] = useState<string[] | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const getCurrentValidState = (currentForm: CurrentUserPayload['user']) => {
+  const getCurrentFormValidState = (
+    currentForm: CurrentUserPayload['user'],
+  ) => {
     const { email, username, image } = currentForm;
 
     return {
-      email: !!email || false,
-      username: !!username || false,
-      image: !!image || false,
+      email: !!email,
+      username: !!username,
+      image: !!image,
     };
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    setIsLoading(true);
-    setErrorTypes(null);
-
-    const { email, password, username, bio, image } = form;
-
-    const currentValidState = getCurrentValidState(form);
+  const checkCurrentFormValid = (currentForm: CurrentUserPayload['user']) => {
+    const currentValidState = getCurrentFormValidState(currentForm);
 
     const errorTypes = Object.entries(currentValidState)
       .filter(([_, value]) => !value)
       .map((state) => state[0]);
 
     if (errorTypes.length > 0) {
-      setErrorTypes(errorTypes);
+      setErrorEmptyTypes(errorTypes);
       setIsLoading(false);
       return;
     }
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    setIsLoading(true);
+    setErrorEmptyTypes(null);
+
+    const { email, password, username, bio, image } = form;
+
+    checkCurrentFormValid(form);
 
     const payload = password
       ? {
@@ -68,10 +77,19 @@ const SettingsPageMain = ({ mySettings }: Props) => {
     putCurrentUser({
       user: payload,
     }).then((res) => {
-      if (!res?.errors) {
-        const user = res.user;
-        updateInfo(user);
+      if (typeof res === 'string') {
+        if (res.match(/email/)) {
+          setErrorValidTypes((prev) => [...(prev ?? []), 'email']);
+        }
+        if (res.match(/username/)) {
+          setErrorValidTypes((prev) => [...(prev ?? []), 'username']);
+        }
+        setIsLoading(false);
+        return;
       }
+
+      const user = res.user;
+      updateInfo(user);
       setIsLoading(false);
     });
   };
@@ -84,6 +102,11 @@ const SettingsPageMain = ({ mySettings }: Props) => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleLogout = () => {
+    logout();
+    router.push('/');
+  };
+
   return (
     <div className="settings-page">
       <div className="container page">
@@ -91,10 +114,22 @@ const SettingsPageMain = ({ mySettings }: Props) => {
           <div className="col-md-6 offset-md-3 col-xs-12">
             <h1 className="text-xs-center">Your Settings</h1>
 
-            {errorTypes && (
+            {errorEmptyTypes && (
               <ul className="error-messages">
-                {errorTypes.map((errorType) => (
-                  <li key={errorType}>{`That ${errorType} is required`}</li>
+                {errorEmptyTypes.map((errorEmptyType) => (
+                  <li
+                    key={errorEmptyType}
+                  >{`That ${errorEmptyType} is required.`}</li>
+                ))}
+              </ul>
+            )}
+
+            {errorValidTypes && (
+              <ul className="error-messages">
+                {errorValidTypes.map((errorValidType) => (
+                  <li
+                    key={errorValidType}
+                  >{`That ${errorValidType} is already exists.`}</li>
                 ))}
               </ul>
             )}
@@ -169,7 +204,7 @@ const SettingsPageMain = ({ mySettings }: Props) => {
             <button
               type="button"
               className="btn btn-outline-danger"
-              onClick={logout}
+              onClick={handleLogout}
             >
               Or click here to logout.
             </button>
